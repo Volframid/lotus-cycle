@@ -3,6 +3,6 @@
   "author": "CEM",
   "version": "1.0.0",
   "description": "Cycle verified Moon/Star Lotus blessings when their real buffs expire.",
-  "disableAutoUpdate": true,
+  "disableAutoUpdate": false,
   "options": { "niceName": "Lotus Cycle", "cliName": "Lotus Cycle" }
 }
