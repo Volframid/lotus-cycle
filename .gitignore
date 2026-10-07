@@ -1,0 +1,7 @@
+/logs/
+/state.json
+/module.config.json
+*.tmp
+*.bak
+Thumbs.db
+Desktop.ini
