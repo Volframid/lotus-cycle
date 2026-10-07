@@ -1,8 +1,15 @@
 {
   "name": "lotus-cycle",
   "author": "CEM",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Cycle verified Moon/Star Lotus blessings when their real buffs expire.",
   "disableAutoUpdate": false,
-  "options": { "niceName": "Lotus Cycle", "cliName": "Lotus Cycle" }
+  "options": {
+    "niceName": "Lotus Cycle",
+    "cliName": "Lotus Cycle"
+  },
+  "servers": [
+    "https://raw.githubusercontent.com/Volframid/lotus-cycle/main/"
+  ],
+  "supportUrl": "https://github.com/Volframid/lotus-cycle/issues"
 }
