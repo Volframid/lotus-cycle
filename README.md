@@ -32,9 +32,6 @@ Use these in Toolbox's command chat:
 | `lotus cancel on/off` | Enable/disable cancellation after buff confirmation; requires fast ON |
 | `lotus log` | Start/stop a diagnostic recording |
 
-The command is `lotus`; the old `lotuscycle` name is removed. Settings changed through commands persist after restarting. Code changes require restarting Toolbox.
-
-Battle Notify's separate Lotus monitoring uses `battle lotus` and `battle lotus reload`, so both mods can be installed together without sharing a command.
 
 ## Settings
 
