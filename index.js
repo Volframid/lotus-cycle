@@ -3,10 +3,12 @@
 const fs = require('fs'), path = require('path');
 const Cycle = require('./lib/cycle');
 const Followup = require('./lib/followup');
+const dungeonZones = require('./lib/dungeon-zones.json');
 module.exports = function LotusCycle(mod) {
   mod.game.initialize(['me.abnormalities', 'contract']);
   const configFile = path.join(__dirname, 'config.json'), stateFile = path.join(__dirname, 'state.json');
   let config = load(), stored = read(stateFile, {}), character = null;
+  let currentZone = mod.game.me.zone ?? null;
   let location = null, facing = 0, action = null, inputUntil = 0, inputSkill = null, activityTimer = null, bootTimer = null, bootUntil = 0;
   let sending = false, logFile = null, actionSkill = null, knownSkills = [];
   let clientIntent = 0, consumedIntent = 0;
@@ -24,7 +26,10 @@ module.exports = function LotusCycle(mod) {
   const message = text => mod.command.message(`[Lotus Cycle] ${text}`);
   const skillId = packet => typeof packet.skill === 'number' ? packet.skill : packet.skill?.id;
   const effectForSkill = id => config.effects.find(effect => effect.skillId === id);
+  const isDungeon = () => Number.isInteger(currentZone) && Object.prototype.hasOwnProperty.call(dungeonZones, currentZone);
+  const zoneAllowed = () => !config.dungeonOnly || isDungeon();
   const sessionAvailable = () => mod.game.isIngame && !transitionLoading && !mod.game.isInLoadingScreen &&
+    zoneAllowed() &&
     pendingRemovals.size === 0 && mod.game.me.alive &&
     !mod.game.me.mounted && !mod.game.contract.active && location !== null && Date.now() >= bootUntil;
   const followup = new Followup({ config: () => config.fastTransition, now: Date.now,
@@ -138,6 +143,8 @@ module.exports = function LotusCycle(mod) {
       if (!Number.isInteger(data[key]) || data[key] < min || data[key] > max) throw new Error(`Invalid ${key}.`);
     delete data.maxAttempts; // Old configs cannot reintroduce the removed attempt cap.
     data.hideAutoAnimation ??= true;
+    data.dungeonOnly ??= false;
+    if (typeof data.dungeonOnly !== 'boolean') throw new Error('Invalid dungeonOnly.');
     if (typeof data.hideAutoAnimation !== 'boolean') throw new Error('Invalid hideAutoAnimation.');
     data.fastTransition ??= { enabled: true, delayAfterBuffMs: 0 };
     data.fastTransition.cancelAfterBuff ??= true;
@@ -433,6 +440,7 @@ module.exports = function LotusCycle(mod) {
   function snapshot() {
     return { gameId: mod.game.me.gameId, class: mod.game.me.class, combat: mod.game.me.status === 1, ingame: mod.game.isIngame,
       loading: mod.game.isInLoadingScreen, alive: mod.game.me.alive, mounted: mod.game.me.mounted,
+      zone: currentZone, dungeon: isDungeon(), dungeonOnly: config.dungeonOnly, zoneAllowed: zoneAllowed(),
       transitionLoading, pendingRemovals: [...pendingRemovals.keys()],
       contract: mod.game.contract.active, hasLocation: location !== null, action, actionSkill,
       inputSkill, inputRemainingMs: Math.max(0, inputUntil - Date.now()), bootRemainingMs: Math.max(0, bootUntil - Date.now()),
@@ -492,13 +500,20 @@ module.exports = function LotusCycle(mod) {
   }
   function leave() {
     pause(); pendingRemovals.clear(); engine.reset(true); premiumSlots.clear(); seenServerActions.clear();
-    premiumListSeen = false; activity.length = 0; character = null;
+    premiumListSeen = false; activity.length = 0; character = null; currentZone = null;
+  }
+  function zoneChanged(zone) {
+    currentZone = Number.isInteger(zone) ? zone : null;
+    if (!zoneAllowed()) followup.reset('outside-dungeon');
+    record('LOTUS_ZONE_CHANGED', { zone: currentZone, dungeon: isDungeon(), dungeonOnly: config.dungeonOnly });
+    engine.wake();
   }
   const ready = () => { boot(); engine.wake(); };
-  const loaded = () => { transitionLoading = false; ready(); };
+  const loaded = () => { transitionLoading = false; zoneChanged(mod.game.me.zone); ready(); };
   const loading = () => { transitionLoading = true; pause(); };
   mod.game.on('enter_loading_screen', loading); mod.game.on('leave_loading_screen', loaded); mod.game.on('leave_game', leave);
   mod.game.me.on('die', pause); mod.game.me.on('resurrect', ready); mod.game.me.on('dismount', ready); mod.game.contract.on('end', ready);
+  mod.game.me.on('change_zone', zoneChanged);
   mod.command.add('lotus', (command = 'status', value = '') => {
     command = command.toLowerCase();
     if (command === 'on' || command === 'off') {
@@ -508,6 +523,21 @@ module.exports = function LotusCycle(mod) {
       try {
         save(configFile, config); persist(); engine.wake();
         record('CYCLE_COMMAND', { command, state: snapshot() }); message(command.toUpperCase());
+      } catch (error) { message(error.message); }
+    } else if (command === 'dg') {
+      value = value.toLowerCase();
+      if (value === 'status') {
+        message(`Dungeon only ${config.dungeonOnly ? 'ON' : 'OFF'} | zone ${currentZone ?? 'unknown'} | ` +
+          `${zoneAllowed() ? 'allowed' : 'paused outside dungeon'}`); return;
+      }
+      if (value !== '' && value !== 'on' && value !== 'off') { message('lotus dg [on/off/status]'); return; }
+      const nextConfig = { ...config, dungeonOnly: value === '' ? !config.dungeonOnly : value === 'on' };
+      try {
+        save(configFile, nextConfig); config = nextConfig; engine.config = config;
+        if (!zoneAllowed()) followup.reset('outside-dungeon');
+        engine.wake(); record('DUNGEON_MODE_COMMAND', { enabled: config.dungeonOnly, state: snapshot() });
+        message(`Dungeon only ${config.dungeonOnly ? 'ON' : 'OFF'}. ` +
+          (config.dungeonOnly ? 'Automatic Lotus runs only in listed dungeons.' : 'Automatic Lotus runs in all zones.'));
       } catch (error) { message(error.message); }
     } else if (command === 'fast') {
       value = value.toLowerCase();
@@ -557,6 +587,8 @@ module.exports = function LotusCycle(mod) {
       record('STATUS_QUERY', { state: snapshot() });
       message(`${config.enabled ? 'ON' : 'OFF'} | cycle ${engine.armed ? 'armed' : 'waiting for a real blessing or lotus on'} | ` +
         `automatic animation ${config.hideAutoAnimation ? 'hidden' : 'normal'}`);
+      message(`Dungeon only ${config.dungeonOnly ? 'ON' : 'OFF'} | zone ${currentZone ?? 'unknown'} | ` +
+        `${zoneAllowed() ? 'allowed' : 'paused outside dungeon'}`);
       message(`Post-blessing retry ${config.fastTransition.enabled ? 'ON' : 'OFF'} | delay ${config.fastTransition.delayAfterBuffMs}ms`);
       message(`Lotus cancel ${config.fastTransition.cancelAfterBuff ? 'ON (experimental)' : 'OFF'} | type ${config.fastTransition.cancelType}`);
       message(`Block cancel ${config.fastTransition.blockCancel.enabled ? 'ON' : 'OFF'} | ` +
@@ -564,7 +596,7 @@ module.exports = function LotusCycle(mod) {
       for (const effect of config.effects) message(`${effect.key}: buff ${Math.max(0, Math.ceil(((engine.buffs.get(effect.buffId) || 0) - Date.now()) / 1000))}s | ` +
         `recharge ${engine.knownCooldowns.has(effect.cooldownId) ? Math.max(0, Math.ceil((engine.readyAt(effect) - Date.now()) / 1000)) + 's' : 'unknown'} | ` +
         `attempts ${engine.attempts.get(effect.key) || 0} | route ${premiumSlots.has(effect.key) ? 'premium slot' : 'direct skill'}`);
-    } else message('lotus on/off/status/reload/log | lotus animation on/off | lotus fast on/off | lotus cancel on/off');
+    } else message('lotus on/off/status/reload/log | lotus dg [on/off/status] | lotus animation on/off | lotus fast on/off | lotus cancel on/off');
   });
   if (mod.game.isIngame && mod.game.me.gameId && mod.game.me.playerId != null)
     login({ serverId: mod.game.me.serverId ?? mod.serverId, playerId: mod.game.me.playerId });
@@ -577,6 +609,7 @@ module.exports = function LotusCycle(mod) {
     for (const [event, fn] of [['enter_loading_screen', loading], ['leave_loading_screen', loaded], ['leave_game', leave]]) mod.game.removeListener(event, fn);
     mod.game.me.removeListener('die', pause); mod.game.me.removeListener('resurrect', ready);
     mod.game.me.removeListener('dismount', ready); mod.game.contract.removeListener('end', ready);
+    mod.game.me.removeListener('change_zone', zoneChanged);
     mod.command.remove('lotus'); record('MODULE_UNLOAD'); logFile = null;
   };
 };

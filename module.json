@@ -1,7 +1,7 @@
 {
   "name": "lotus-cycle",
   "author": "CEM",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Cycle verified Moon/Star Lotus blessings when their real buffs expire.",
   "disableAutoUpdate": false,
   "options": {

@@ -27,5 +27,6 @@
       "buffId": 99950020,
       "cooldownId": 99950021
     }
-  ]
+  ],
+  "dungeonOnly": false
 }

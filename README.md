@@ -24,6 +24,7 @@ For maintainers: every push to `main` runs the GitHub workflow to regenerate and
 - Tracks the server's real buff duration, recharge and short skill cooldown. It does not overwrite an active speed buff.
 - Retries unconfirmed attempts at a controlled rate until a real speed buff confirms success.
 - Pauses while loading, dead, mounted or in a restricted contract. Map changes are checked before treating a buff removal as expiry.
+- Optional dungeon-only mode pauses automatic use outside listed dungeons and resumes the existing cycle when you enter one. Buff durations and cooldowns continue to be tracked everywhere; manual Lotus use is unaffected.
 - Saves cooldowns and the last successful Lotus per server/character in `state.json`.
 
 Server restrictions still apply. Unknown cooldowns are shown as unknown, and a skill cooldown alone does not confirm a successful buff.
@@ -36,6 +37,9 @@ Use these in Toolbox's command chat:
 |---|---|
 | `lotus` / `lotus status` | Show cycle, buff, cooldown and transition status |
 | `lotus on` / `lotus off` | Save ON/OFF; ON also starts the cycle |
+| `lotus dg` | Toggle and save dungeon-only mode |
+| `lotus dg on/off` | Enable/disable dungeon-only mode |
+| `lotus dg status` | Show dungeon-only preference and current zone |
 | `lotus reload` | Reload all of `config.json` |
 | `lotus animation on/off` | Hide/show automatic Lotus animation; ON means hidden |
 | `lotus fast on/off` | Enable/disable the fast transition feature |
@@ -50,6 +54,7 @@ Edit `config.json`, then use `lotus reload`.
 | Setting | Purpose |
 |---|---|
 | `enabled` | Automatic cycling |
+| `dungeonOnly` | Restrict automatic use to listed dungeons; default `false`, saved across restarts |
 | `first` | First Lotus when starting without an active buff: `moon` or `star` |
 | `hideAutoAnimation` | Hide automatic Lotus presentation; manual use stays visible |
 | `retryDelayMs` | Retry pacing after unconfirmed requests |
@@ -61,6 +66,8 @@ Edit `config.json`, then use `lotus reload`.
 | `fastTransition.blockCancel.enabled` | Use a block press/release for Lancer and Berserker |
 | `fastTransition.blockCancel.delayAfterBuffMs` | Block delay after buff confirmation; default 100 ms, range 0–400 |
 | `effects` | Lotus skill, speed buff and recharge IDs for your server |
+
+Dungeon zones are bundled in `lib/dungeon-zones.json`, using the numeric guide IDs from the dungeon guide collection. Guardian missions are excluded. There is no runtime dependency on a guide mod. Unlisted zones are paused when dungeon-only mode is ON.
 
 Default server IDs:
 
