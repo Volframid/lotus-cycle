@@ -4,10 +4,13 @@ const fs = require('fs'), path = require('path');
 const Cycle = require('./lib/cycle');
 const Followup = require('./lib/followup');
 const dungeonZones = require('./lib/dungeon-zones.json');
+const defaults = require('./lib/default-config.json');
+const { createStore, validateState } = require('./lib/json-store');
 module.exports = function LotusCycle(mod) {
   mod.game.initialize(['me.abnormalities', 'contract']);
   const configFile = path.join(__dirname, 'config.json'), stateFile = path.join(__dirname, 'state.json');
-  let config = load(), stored = read(stateFile, {}), character = null;
+  const store = createStore({ fs, warn: text => (mod.warn || mod.error).call(mod, text) });
+  let config = load(true), stored = store.read(stateFile, {}, { validate: validateState, recover: true }), character = null;
   let currentZone = mod.game.me.zone ?? null;
   let location = null, facing = 0, action = null, inputUntil = 0, inputSkill = null, activityTimer = null, bootTimer = null, bootUntil = 0;
   let sending = false, logFile = null, actionSkill = null, knownSkills = [];
@@ -116,18 +119,16 @@ module.exports = function LotusCycle(mod) {
     if (followup.window || engine.pending && Date.now() <= engine.pending.until + 2000)
       record('LOTUS_NEARBY_ACTIVITY', entry);
   }
-  function read(file, fallback) {
-    try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); }
-    catch (error) { if (error.code === 'ENOENT') return fallback; throw error; }
-  }
   function inputMatchesAction(id, alreadySeenAction) {
     if (inputSkill === null) return false;
     // A repeated stage of an older action cannot acknowledge a new alias input.
     if (alreadySeenAction) return false;
     return inputSkill === id;
   }
-  function load() {
-    const data = read(configFile, null);
+  function load(recover = false) {
+    return store.read(configFile, defaults, { validate: validateConfig, recover });
+  }
+  function validateConfig(data) {
     if (!data || typeof data.enabled !== 'boolean' || !Array.isArray(data.effects) || data.effects.length !== 2 ||
         !data.effects.some(e => e.key === data.first)) throw new Error('Invalid Lotus Cycle config.');
     const ids = new Set(), keys = new Set();
@@ -163,7 +164,7 @@ module.exports = function LotusCycle(mod) {
     return data;
   }
   function save(file, data) {
-    fs.writeFileSync(file + '.tmp', JSON.stringify(data, null, 2) + '\n'); fs.renameSync(file + '.tmp', file);
+    store.write(file, data);
   }
   function record(stage, data = {}) {
     if (!logFile) return;

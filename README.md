@@ -88,4 +88,6 @@ These features do not guarantee instant server acceptance. To compare normal tra
 
 Logging starts OFF. Use `lotus log` before and after a test. Recordings are saved as `logs/lotus-cycle-*.jsonl`.
 
+Malformed `state.json` or `config.json` no longer prevents startup. The original file is preserved as an `*.invalid-*.bak` backup before recovery. Invalid state resets saved timers; real server buff/cooldown packets rebuild them. Invalid configuration restores the bundled defaults. Valid user settings are preserved. UTF-8 and UTF-16 JSON files are supported. If `lotus reload` finds invalid settings, the current running configuration stays active and the file is left untouched.
+
 Share the source, `config.json`, `module.json`, `lib/` and this README. Exclude personal `state.json`, `logs/` and local Toolbox settings; `.gitignore` covers them.
