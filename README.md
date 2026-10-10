@@ -6,7 +6,7 @@ Standalone Moon/Star Lotus automation for all 13 TERA classes. No other mod or e
 
 Download the installation ZIP from [Releases](https://github.com/Volframid/lotus-cycle/releases/latest), then extract the `lotus-cycle` folder into Toolbox's `mods` directory and restart Toolbox. If using GitHub's source ZIP, rename the extracted folder to `lotus-cycle`. Install only one copy.
 
-The shared package defaults to ON. Existing installations keep their saved setting. An active Lotus speed buff starts the cycle automatically. If no speed buff is active, use `lotus on` to start with the configured first Lotus.
+The shared package defaults to ON. Existing installations keep their saved setting. An active Lotus speed buff starts the cycle automatically. Dungeon-only mode also starts an enabled cycle after login or state recovery, even without an active blessing; no second `lotus on` command is needed. In unrestricted mode, use `lotus on` to start without an active buff.
 
 ## Automatic updates
 
@@ -24,7 +24,7 @@ For maintainers: every push to `main` runs the GitHub workflow to regenerate and
 - Tracks the server's real buff duration, recharge and short skill cooldown. It does not overwrite an active speed buff.
 - Retries unconfirmed attempts at a controlled rate until a real speed buff confirms success.
 - Pauses while loading, dead, mounted or in a restricted contract. Map changes are checked before treating a buff removal as expiry.
-- Optional dungeon-only mode pauses automatic use outside listed dungeons and resumes the existing cycle when you enter one. Buff durations and cooldowns continue to be tracked everywhere; manual Lotus use is unaffected.
+- Optional dungeon-only mode pauses automatic use outside listed dungeons and starts/resumes the enabled cycle when you enter one. Buff durations and cooldowns continue to be tracked everywhere; manual Lotus use is unaffected. `lotus off` remains OFF.
 - Saves cooldowns and the last successful Lotus per server/character in `state.json`.
 
 Server restrictions still apply. Unknown cooldowns are shown as unknown, and a skill cooldown alone does not confirm a successful buff.
@@ -88,6 +88,6 @@ These features do not guarantee instant server acceptance. To compare normal tra
 
 Logging starts OFF. Use `lotus log` before and after a test. Recordings are saved as `logs/lotus-cycle-*.jsonl`.
 
-Malformed `state.json` or `config.json` no longer prevents startup. The original file is preserved as an `*.invalid-*.bak` backup before recovery. Invalid state resets saved timers; real server buff/cooldown packets rebuild them. Invalid configuration restores the bundled defaults. Valid user settings are preserved. UTF-8 and UTF-16 JSON files are supported. If `lotus reload` finds invalid settings, the current running configuration stays active and the file is left untouched.
+Malformed `state.json` or `config.json` does not prevent startup. The original file is preserved as an `*.invalid-*.bak` backup before recovery. State writes are flushed before replacement and keep a validated `state.json.last-good` recovery copy. Invalid state restores that copy when available; otherwise real server buffs/cooldowns rebuild the timers. When the last Lotus is unknown, the cycle prefers the Lotus with the earliest known readiness instead of waiting for an unavailable configured first Lotus. A recovery warning reports an actual damaged local file; it is not a module crash. Invalid configuration restores bundled defaults. Valid user settings are preserved. UTF-8 and UTF-16 JSON files are supported. Invalid `lotus reload` input leaves the running settings and edited file untouched.
 
-Share the source, `config.json`, `module.json`, `lib/` and this README. Exclude personal `state.json`, `logs/` and local Toolbox settings; `.gitignore` covers them.
+Share the source, `config.json`, `module.json`, `lib/` and this README. Exclude personal `state.json`, `state.json.last-good`, `logs/` and local Toolbox settings; `.gitignore` covers them.

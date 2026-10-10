@@ -143,15 +143,15 @@ module.exports = function LotusCycle(mod) {
     for (const [key, min, max] of [['acknowledgementMs', 500, 5000], ['retryDelayMs', 500, 5000]])
       if (!Number.isInteger(data[key]) || data[key] < min || data[key] > max) throw new Error(`Invalid ${key}.`);
     delete data.maxAttempts; // Old configs cannot reintroduce the removed attempt cap.
-    data.hideAutoAnimation ??= true;
-    data.dungeonOnly ??= false;
+    if (data.hideAutoAnimation == null) data.hideAutoAnimation = true;
+    if (data.dungeonOnly == null) data.dungeonOnly = false;
     if (typeof data.dungeonOnly !== 'boolean') throw new Error('Invalid dungeonOnly.');
     if (typeof data.hideAutoAnimation !== 'boolean') throw new Error('Invalid hideAutoAnimation.');
-    data.fastTransition ??= { enabled: true, delayAfterBuffMs: 0 };
-    data.fastTransition.cancelAfterBuff ??= true;
+    if (data.fastTransition == null) data.fastTransition = { enabled: true, delayAfterBuffMs: 0 };
+    if (data.fastTransition.cancelAfterBuff == null) data.fastTransition.cancelAfterBuff = true;
     // Trial value, not a verified Lotus cancellation mode; live action ends decide success.
-    data.fastTransition.cancelType ??= 0;
-    data.fastTransition.blockCancel ??= { enabled: true, delayAfterBuffMs: 100 };
+    if (data.fastTransition.cancelType == null) data.fastTransition.cancelType = 0;
+    if (data.fastTransition.blockCancel == null) data.fastTransition.blockCancel = { enabled: true, delayAfterBuffMs: 100 };
     if (typeof data.fastTransition.blockCancel.enabled !== 'boolean' ||
         !Number.isInteger(data.fastTransition.blockCancel.delayAfterBuffMs) ||
         data.fastTransition.blockCancel.delayAfterBuffMs < 0 || data.fastTransition.blockCancel.delayAfterBuffMs > 400)
@@ -435,7 +435,10 @@ module.exports = function LotusCycle(mod) {
   function boot() {
     if (bootTimer !== null) mod.clearTimeout(bootTimer);
     bootUntil = Date.now() + 2000; bootTimer = mod.setTimeout(() => {
-      bootTimer = null; syncNativeBuffs(); confirmRemovals(); engine.resume();
+      bootTimer = null; syncNativeBuffs();
+      // A saved dungeon-only preference also starts a fresh/recovered cycle.
+      if (config.enabled && config.dungeonOnly) engine.armed = true;
+      confirmRemovals(); engine.resume();
     }, 2000);
   }
   function snapshot() {
@@ -486,6 +489,7 @@ module.exports = function LotusCycle(mod) {
     for (const id of saved.knownCooldowns || Object.keys(saved.cooldowns || {}).map(Number))
       if (config.effects.some(effect => effect.cooldownId === id)) engine.knownCooldowns.add(id);
     engine.last = config.effects.some(e => e.key === saved.last) ? saved.last : null; engine.armed = saved.armed === true;
+    currentZone = Number.isInteger(mod.game.me.zone) ? mod.game.me.zone : null;
     boot();
   }
   mod.hook('S_LOGIN', mod.majorPatchVersion >= 86 ? 14 : 13, login);
@@ -535,6 +539,7 @@ module.exports = function LotusCycle(mod) {
       const nextConfig = { ...config, dungeonOnly: value === '' ? !config.dungeonOnly : value === 'on' };
       try {
         save(configFile, nextConfig); config = nextConfig; engine.config = config;
+        if (config.enabled && config.dungeonOnly) { engine.armed = true; syncNativeBuffs(); }
         if (!zoneAllowed()) followup.reset('outside-dungeon');
         engine.wake(); record('DUNGEON_MODE_COMMAND', { enabled: config.dungeonOnly, state: snapshot() });
         message(`Dungeon only ${config.dungeonOnly ? 'ON' : 'OFF'}. ` +
@@ -575,6 +580,7 @@ module.exports = function LotusCycle(mod) {
             premiumSlots.delete(key); engine.premiumReuse.delete(key);
           }
         }
+        if (config.enabled && config.dungeonOnly) engine.armed = true;
         syncNativeBuffs(); engine.wake(); message('Configuration reloaded.');
       } catch (error) { message(error.message); }
     } else if (command === 'log') {
