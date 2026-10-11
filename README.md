@@ -1,6 +1,6 @@
 # Lotus Cycle
 
-Standalone Moon/Star Lotus automation for all 13 TERA classes. No other mod or external skill data is required.
+Automatic Moon/Star Lotus cycling with verified buff and cooldown tracking.
 
 ## Installation
 
