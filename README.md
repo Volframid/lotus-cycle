@@ -20,7 +20,8 @@ For maintainers: every push to `main` runs the GitHub workflow to regenerate and
 
 ## How it works
 
-- Waits for the actual Moon/Star speed buff to end, then uses the other Lotus when available.
+- Uses only Lotus skills confirmed by the current character's server skill list or premium slots. Before these lists arrive, automatic use stays paused. No owned Lotus means no attempts; one owned Lotus is reused after its buff and recharge expire; both owned keep the alternating cycle.
+- Waits for the actual Moon/Star speed buff to end before using an eligible Lotus.
 - Tracks the server's real buff duration, recharge and short skill cooldown. It does not overwrite an active speed buff.
 - Retries unconfirmed attempts at a controlled rate until a real speed buff confirms success.
 - Pauses while loading, dead, mounted or in a restricted contract. Map changes are checked before treating a buff removal as expiry.
@@ -35,7 +36,7 @@ Use these in Toolbox's command chat:
 
 | Command | Action |
 |---|---|
-| `lotus` / `lotus status` | Show cycle, buff, cooldown and transition status |
+| `lotus` / `lotus status` | Show ownership, cycle, buff, cooldown and transition status |
 | `lotus on` / `lotus off` | Save ON/OFF; ON also starts the cycle |
 | `lotus dg` | Toggle and save dungeon-only mode |
 | `lotus dg on/off` | Enable/disable dungeon-only mode |

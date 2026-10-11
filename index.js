@@ -24,7 +24,8 @@ module.exports = function LotusCycle(mod) {
   const hiddenLotusActions = new Map();
   const premiumSlots = new Map(), activity = [];
   const seenServerActions = new Set();
-  let premiumListSeen = false;
+  let premiumListSeen = false, lotusSkillListSeen = false;
+  let lotusSkillIds = new Set();
   const native = { order: -9000006, filter: { fake: false, modified: null, silenced: null } };
   const message = text => mod.command.message(`[Lotus Cycle] ${text}`);
   const skillId = packet => typeof packet.skill === 'number' ? packet.skill : packet.skill?.id;
@@ -75,11 +76,12 @@ module.exports = function LotusCycle(mod) {
     const id = blockListSeen ? ranks.find(rank => blockSkills.includes(rank)) : 20200;
     return id ? { class: job, skillId: id, skillIds: ids } : null;
   }
-  const engine = new Cycle({ config, now: Date.now,
+  const engine = new Cycle({ config, now: Date.now, canUse: ownsLotus,
     setTimeout: (fn, ms) => mod.setTimeout(fn, ms), clearTimeout: id => mod.clearTimeout(id), record,
     available: () => sessionAvailable() && action === null && inputUntil <= Date.now(),
     retryWhenBusy: sessionAvailable,
     send: effect => {
+      if (!ownsLotus(effect)) return false;
       followup.begin(effect);
       autoDisplayRequest = config.hideAutoAnimation ? { skillId: effect.skillId,
         until: Date.now() + config.acknowledgementMs } : null;
@@ -98,6 +100,25 @@ module.exports = function LotusCycle(mod) {
       return forward('C_START_SKILL', 7, packet, effect.key);
     }
   });
+  function ownsLotus(effect) {
+    return lotusSkillIds.has(effect.skillId) ||
+      (premiumListSeen && premiumSlots.get(effect.key)?.id === effect.skillId);
+  }
+  function ownershipState(effect) {
+    if (ownsLotus(effect)) return 'owned';
+    return lotusSkillListSeen || premiumListSeen ? 'not available' : 'awaiting server list';
+  }
+  function refreshOwnership(reason) {
+    const pendingEffect = engine.pending && config.effects.find(e => e.key === engine.pending.kind);
+    if (pendingEffect && !ownsLotus(pendingEffect)) {
+      engine.pending = null; autoDisplayRequest = null;
+      followup.reset('lotus-ownership-changed');
+    }
+    for (const effect of config.effects) if (!ownsLotus(effect)) engine.attempts.delete(effect.key);
+    record('LOTUS_OWNERSHIP', { reason, skillListSeen: lotusSkillListSeen, premiumListSeen,
+      available: config.effects.filter(ownsLotus).map(effect => effect.key) });
+    engine.wake();
+  }
   function forward(name, version, packet, kind) {
     sending = true;
     try {
@@ -257,10 +278,13 @@ module.exports = function LotusCycle(mod) {
     record('SERVER_LOTUS_SYSTEM_MESSAGE', { message: packet.message, parsed, pending: engine.pending });
   });
   mod.hook('S_SKILL_LIST', 2, native, packet => {
-    blockListSeen = true;
+    if (!Array.isArray(packet.skills)) return;
+    blockListSeen = true; lotusSkillListSeen = true;
     blockSkills = packet.skills.filter(skill => skill.active === true).map(skill => Number(skill.id));
     knownSkills = packet.skills.filter(skill => Number(skill.id) >= 60000000 && Number(skill.id) < 70000000);
+    lotusSkillIds = new Set(packet.skills.filter(skill => skill.active === true).map(skill => Number(skill.id)));
     record('LOTUS_SKILL_LIST', { skills: knownSkills });
+    refreshOwnership('server-skill-list');
   });
   mod.hook('S_PREMIUM_SLOT_DATALIST', 2, native, packet => {
     premiumListSeen = true; premiumSlots.clear(); engine.premiumReuse.clear();
@@ -277,11 +301,11 @@ module.exports = function LotusCycle(mod) {
       }
     }
     record('LOTUS_PREMIUM_SLOTS', { slots: Object.fromEntries(premiumSlots), reuse: Object.fromEntries(engine.premiumReuse) });
-    engine.wake();
+    refreshOwnership('server-premium-list');
   });
   mod.hook('S_PREMIUM_SLOT_OFF', 'event', () => {
     premiumSlots.clear(); engine.premiumReuse.clear(); premiumListSeen = false;
-    record('LOTUS_PREMIUM_SLOTS_OFF'); engine.wake();
+    record('LOTUS_PREMIUM_SLOTS_OFF'); refreshOwnership('premium-slots-off');
   });
   mod.hook('C_USE_PREMIUM_SLOT', 1, native, packet => {
     if (packet.type !== 3) return;
@@ -450,6 +474,7 @@ module.exports = function LotusCycle(mod) {
       inputSkill, inputRemainingMs: Math.max(0, inputUntil - Date.now()), bootRemainingMs: Math.max(0, bootUntil - Date.now()),
       buffs: Object.fromEntries(engine.buffs), cooldowns: Object.fromEntries(engine.cooldowns),
       reuse: Object.fromEntries(engine.reuse), knownCooldowns: [...engine.knownCooldowns],
+      lotusSkillListSeen, ownership: Object.fromEntries(config.effects.map(e => [e.key, ownershipState(e)])),
       premiumListSeen, premiumSlots: Object.fromEntries(premiumSlots), premiumReuse: Object.fromEntries(engine.premiumReuse),
       hideAutoAnimation: config.hideAutoAnimation, hiddenLotusActions: [...hiddenLotusActions.keys()],
       fastTransition: config.fastTransition, followup: followup.state(),
@@ -477,7 +502,9 @@ module.exports = function LotusCycle(mod) {
     blockSkills = []; blockListSeen = false; manualBlockHeld = false; hiddenBlockActions.clear();
     autoDisplayRequest = null; hiddenLotusActions.clear();
     followup.reset('login');
-    if (character !== null) { premiumSlots.clear(); premiumListSeen = false; }
+    if (character !== null) {
+      premiumSlots.clear(); premiumListSeen = false; lotusSkillIds.clear(); lotusSkillListSeen = false;
+    }
     activity.length = 0;
     engine.reset(true); clearActivity(); location = null; action = null; actionSkill = null; knownSkills = [];
     for (const [key, slot] of premiumSlots) engine.premiumReuse.set(key, slot.readyAt);
@@ -505,7 +532,8 @@ module.exports = function LotusCycle(mod) {
   }
   function leave() {
     pause(); pendingRemovals.clear(); engine.reset(true); premiumSlots.clear(); seenServerActions.clear();
-    premiumListSeen = false; activity.length = 0; character = null; currentZone = null;
+    premiumListSeen = false; lotusSkillIds.clear(); lotusSkillListSeen = false; knownSkills = [];
+    activity.length = 0; character = null; currentZone = null;
   }
   function zoneChanged(zone) {
     currentZone = Number.isInteger(zone) ? zone : null;
@@ -581,7 +609,7 @@ module.exports = function LotusCycle(mod) {
           }
         }
         if (config.enabled && config.dungeonOnly) engine.armed = true;
-        syncNativeBuffs(); engine.wake(); message('Configuration reloaded.');
+        syncNativeBuffs(); refreshOwnership('config-reloaded'); message('Configuration reloaded.');
       } catch (error) { message(error.message); }
     } else if (command === 'log') {
       if (logFile) { record('SESSION_END'); logFile = null; message('Log OFF.'); }
@@ -600,7 +628,7 @@ module.exports = function LotusCycle(mod) {
       message(`Lotus cancel ${config.fastTransition.cancelAfterBuff ? 'ON (experimental)' : 'OFF'} | type ${config.fastTransition.cancelType}`);
       message(`Block cancel ${config.fastTransition.blockCancel.enabled ? 'ON' : 'OFF'} | ` +
         `${blockRoute()?.class ?? 'native cancel route'} | delay ${config.fastTransition.blockCancel.delayAfterBuffMs}ms`);
-      for (const effect of config.effects) message(`${effect.key}: buff ${Math.max(0, Math.ceil(((engine.buffs.get(effect.buffId) || 0) - Date.now()) / 1000))}s | ` +
+      for (const effect of config.effects) message(`${effect.key}: ${ownershipState(effect)} | buff ${Math.max(0, Math.ceil(((engine.buffs.get(effect.buffId) || 0) - Date.now()) / 1000))}s | ` +
         `recharge ${engine.knownCooldowns.has(effect.cooldownId) ? Math.max(0, Math.ceil((engine.readyAt(effect) - Date.now()) / 1000)) + 's' : 'unknown'} | ` +
         `attempts ${engine.attempts.get(effect.key) || 0} | route ${premiumSlots.has(effect.key) ? 'premium slot' : 'direct skill'}`);
     } else message('lotus on/off/status/reload/log | lotus dg [on/off/status] | lotus animation on/off | lotus fast on/off | lotus cancel on/off');
