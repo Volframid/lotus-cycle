@@ -267,7 +267,7 @@ module.exports = function LotusCycle(mod) {
     observeActivity('S_CANNOT_START_SKILL', packet);
     followup.reject(skillId(packet));
     if (effectForSkill(skillId(packet))) record('SERVER_LOTUS_REJECT', { packet, pending: engine.pending, state: snapshot() });
-    if (inputSkill === skillId(packet)) clearActivity();
+    if (inputSkill === skillId(packet)) settleRejectedInput(skillId(packet));
     if (autoDisplayRequest?.skillId === skillId(packet)) autoDisplayRequest = null;
     engine.reject(skillId(packet)); engine.wake();
   });
@@ -326,6 +326,19 @@ module.exports = function LotusCycle(mod) {
   function clearActivity() {
     if (activityTimer !== null) mod.clearTimeout(activityTimer);
     activityTimer = null; inputUntil = 0; inputSkill = null;
+  }
+  function settleRejectedInput(id) {
+    // A refusal can be for an earlier duplicate of the same input. Its real
+    // accepted stage may arrive a few milliseconds later in the server batch.
+    // Do not inject Lotus into that gap; fresh player input still passes freely.
+    if (activityTimer !== null) mod.clearTimeout(activityTimer);
+    inputUntil = Math.min(inputUntil, Date.now() + 150);
+    const until = inputUntil;
+    record('LOTUS_REJECT_SETTLE', { skill: id, delayMs: Math.max(0, until - Date.now()) });
+    activityTimer = mod.setTimeout(() => {
+      if (inputSkill !== id || inputUntil !== until) return;
+      clearActivity(); engine.wake();
+    }, Math.max(0, until - Date.now()));
   }
   for (const [name, version] of [['C_START_SKILL', 7], ['C_START_TARGETED_SKILL', 7], ['C_START_INSTANCE_SKILL', 7], ['C_PRESS_SKILL', 4]]) {
     mod.hook(name, version, native, packet => {

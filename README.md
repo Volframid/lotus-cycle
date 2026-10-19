@@ -24,6 +24,7 @@ For maintainers: every push to `main` runs the GitHub workflow to regenerate and
 - Waits for the actual Moon/Star speed buff to end before using an eligible Lotus.
 - Tracks the server's real buff duration, recharge and short skill cooldown. It does not overwrite an active speed buff.
 - Retries unconfirmed attempts at a controlled rate until a real speed buff confirms success.
+- A rejected combat input keeps a short, at most 150 ms reply-settling guard. This prevents a refusal for an earlier duplicate from injecting Lotus just before the same skill's real accepted start arrives. Player inputs continue normally, and newer input replaces the guard.
 - Pauses while loading, dead, mounted or in a restricted contract. Map changes are checked before treating a buff removal as expiry.
 - Optional dungeon-only mode pauses automatic use outside listed dungeons and starts/resumes the enabled cycle when you enter one. Buff durations and cooldowns continue to be tracked everywhere; manual Lotus use is unaffected. `lotus off` remains OFF.
 - Saves cooldowns and the last successful Lotus per server/character in `state.json`.
