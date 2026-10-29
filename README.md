@@ -42,6 +42,8 @@ If another module already uses `lotus`, Lotus Cycle still loads and `/8 lotuscyc
 
 A second current Lotus Cycle instance stays inactive before installing its gameplay hooks. Lotus Cycle never removes or replaces another module's command. This protects command ownership; it does not prevent other software from changing files on disk.
 
+Use `/8 lotuscycle owner` to read the existing Toolbox command ownership records. Conflicted status/ON/reload output includes the same module ID and folder name. These are registry candidates, since a stale instance or another module editing the shared registry can leave old bookkeeping behind. The diagnostic never loads, disables or unloads a module, executes the conflicting command, or prints full paths/settings. If no owner can be resolved, it says so instead of guessing.
+
 | Command | Action |
 |---|---|
 | `lotuscycle` / `lotuscycle status` | Show ownership, cycle, buff, cooldown and transition status |
@@ -50,6 +52,7 @@ A second current Lotus Cycle instance stays inactive before installing its gamep
 | `lotuscycle dg on/off` | Enable/disable dungeon-only mode |
 | `lotuscycle dg status` | Show dungeon-only preference and current zone |
 | `lotuscycle reload` | Reload all of `config.json` |
+| `lotuscycle owner` | Show existing Toolbox records claiming the `lotus` command |
 | `lotuscycle animation on/off` | Hide/show automatic Lotus animation; ON means hidden |
 | `lotuscycle fast on/off` | Enable/disable the fast transition feature |
 | `lotuscycle cancel on/off` | Enable/disable cancellation after buff confirmation; requires fast ON |

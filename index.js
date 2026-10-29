@@ -7,6 +7,7 @@ const dungeonZones = require('./lib/dungeon-zones.json');
 const defaults = require('./lib/default-config.json');
 const { createStore, validateState } = require('./lib/json-store');
 const commandOwner = require('./lib/command-owner');
+const commandDiagnostic = require('./lib/command-diagnostic');
 module.exports = function LotusCycle(mod) {
   let handleCommand = null, cleanupCore = null;
   const commands = commandOwner(mod.command, (...args) => handleCommand && handleCommand(...args),
@@ -39,6 +40,15 @@ module.exports = function LotusCycle(mod) {
   let lotusSkillIds = new Set();
   const native = { order: -9000006, filter: { fake: false, modified: null, silenced: null } };
   const message = text => mod.command.message(`[Lotus Cycle] ${text}`);
+  const reportCommandOwner = () => {
+    const result = commandDiagnostic(mod);
+    if (result.commandPresent === false) { message('Command lotus is currently free. Use /8 lotuscycle on or reload to acquire it.'); return; }
+    if (!result.candidates.length) {
+      message('Command lotus owner could not be identified from existing Toolbox records. Do not disable a module by guesswork.'); return;
+    }
+    for (const owner of result.candidates)
+      message(`Command lotus owner candidate: ${owner.name || owner.id || 'unknown'} | ID ${owner.id || 'unknown'} | folder ${owner.folder || 'unknown'}`);
+  };
   const skillId = packet => typeof packet.skill === 'number' ? packet.skill : packet.skill?.id;
   const effectForSkill = id => config.effects.find(effect => effect.skillId === id);
   const isDungeon = () => Number.isInteger(currentZone) && Object.prototype.hasOwnProperty.call(dungeonZones, currentZone);
@@ -574,7 +584,7 @@ module.exports = function LotusCycle(mod) {
   handleCommand = (command = 'status', value = '') => {
     command = command.toLowerCase();
     if ((command === 'on' || command === 'reload') && !commands.retry()) {
-      message(commands.reason()); return;
+      message(commands.reason()); reportCommandOwner(); return;
     }
     if (command === 'on' || command === 'off') {
       config.enabled = command === 'on'; engine.config = config;
@@ -645,9 +655,11 @@ module.exports = function LotusCycle(mod) {
         logFile = path.join(folder, `lotus-cycle-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`);
           record('SESSION_START', { config, state: snapshot() }); message('Log ON.');
       } catch (error) { message(error.message); }
+    } else if (command === 'owner') {
+      reportCommandOwner();
     } else if (command === 'status') {
       record('STATUS_QUERY', { state: snapshot() });
-      if (!commands.ready()) message(commands.reason());
+      if (!commands.ready()) { message(commands.reason()); reportCommandOwner(); }
       message(`${commands.ready() ? (config.enabled ? 'ON' : 'OFF') : 'PAUSED (command conflict)'} | cycle ${engine.armed ? 'armed' : 'waiting for a real blessing or lotuscycle on'} | ` +
         `automatic animation ${config.hideAutoAnimation ? 'hidden' : 'normal'}`);
       message(`Dungeon only ${config.dungeonOnly ? 'ON' : 'OFF'} | zone ${currentZone ?? 'unknown'} | ` +
@@ -659,7 +671,7 @@ module.exports = function LotusCycle(mod) {
       for (const effect of config.effects) message(`${effect.key}: ${ownershipState(effect)} | buff ${Math.max(0, Math.ceil(((engine.buffs.get(effect.buffId) || 0) - Date.now()) / 1000))}s | ` +
         `recharge ${engine.knownCooldowns.has(effect.cooldownId) ? Math.max(0, Math.ceil((engine.readyAt(effect) - Date.now()) / 1000)) + 's' : 'unknown'} | ` +
         `attempts ${engine.attempts.get(effect.key) || 0} | route ${premiumSlots.has(effect.key) ? 'premium slot' : 'direct skill'}`);
-    } else message('lotuscycle on/off/status/reload/log | lotuscycle dg [on/off/status] | lotuscycle animation on/off | lotuscycle fast on/off | lotuscycle cancel on/off');
+    } else message('lotuscycle on/off/status/owner/reload/log | lotuscycle dg [on/off/status] | lotuscycle animation on/off | lotuscycle fast on/off | lotuscycle cancel on/off');
   };
   cleanupCore = () => {
     clearRemovalTimer(); pendingRemovals.clear();
