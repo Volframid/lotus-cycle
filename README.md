@@ -6,7 +6,7 @@ Automatic Moon/Star Lotus cycling with verified buff and cooldown tracking.
 
 Download the installation ZIP from [Releases](https://github.com/Volframid/lotus-cycle/releases/latest), then extract the `lotus-cycle` folder into Toolbox's `mods` directory and restart Toolbox. If using GitHub's source ZIP, rename the extracted folder to `lotus-cycle`. Install only one copy.
 
-The shared package defaults to ON. Existing installations keep their saved setting. An active Lotus speed buff starts the cycle automatically. Dungeon-only mode also starts an enabled cycle after login or state recovery, even without an active blessing; no second `lotus on` command is needed. In unrestricted mode, use `lotus on` to start without an active buff.
+The shared package defaults to ON. Existing installations keep their saved setting. An active Lotus speed buff starts the cycle automatically. Dungeon-only mode also starts an enabled cycle after login or state recovery, even without an active blessing; no second `lotuscycle on` command is needed. In unrestricted mode, use `lotuscycle on` to start without an active buff.
 
 ## Automatic updates
 
@@ -26,32 +26,39 @@ For maintainers: every push to `main` runs the GitHub workflow to regenerate and
 - Retries unconfirmed attempts at a controlled rate until a real speed buff confirms success.
 - A rejected combat input keeps a short, at most 150 ms reply-settling guard. This prevents a refusal for an earlier duplicate from injecting Lotus just before the same skill's real accepted start arrives. Player inputs continue normally, and newer input replaces the guard.
 - Pauses while loading, dead, mounted or in a restricted contract. Map changes are checked before treating a buff removal as expiry.
-- Optional dungeon-only mode pauses automatic use outside listed dungeons and starts/resumes the enabled cycle when you enter one. Buff durations and cooldowns continue to be tracked everywhere; manual Lotus use is unaffected. `lotus off` remains OFF.
+- Optional dungeon-only mode pauses automatic use outside listed dungeons and starts/resumes the enabled cycle when you enter one. Buff durations and cooldowns continue to be tracked everywhere; manual Lotus use is unaffected. `lotuscycle off` remains OFF.
 - Saves cooldowns and the last successful Lotus per server/character in `state.json`.
 
 Server restrictions still apply. Unknown cooldowns are shown as unknown, and a skill cooldown alone does not confirm a successful buff.
 
 ## Commands
 
-Use these in Toolbox's command chat:
+Use these in Toolbox's command chat (for example, `/8 lotuscycle status`).
+`lotuscycle` is the module's primary command. The shorter `lotus` alias also works when available.
+
+### Command conflicts
+
+If another module already uses `lotus`, Lotus Cycle still loads and `/8 lotuscycle status` remains available. Automatic use stays paused to avoid running two Lotus engines together; the warning identifies the conflicting command. Keep only one Lotus automation module enabled. After disabling the conflicting module, use `/8 lotuscycle on` or `/8 lotuscycle reload`, or restart Toolbox normally. Renaming a folder inside `mods` does not disable it.
+
+A second current Lotus Cycle instance stays inactive before installing its gameplay hooks. Lotus Cycle never removes or replaces another module's command. This protects command ownership; it does not prevent other software from changing files on disk.
 
 | Command | Action |
 |---|---|
-| `lotus` / `lotus status` | Show ownership, cycle, buff, cooldown and transition status |
-| `lotus on` / `lotus off` | Save ON/OFF; ON also starts the cycle |
-| `lotus dg` | Toggle and save dungeon-only mode |
-| `lotus dg on/off` | Enable/disable dungeon-only mode |
-| `lotus dg status` | Show dungeon-only preference and current zone |
-| `lotus reload` | Reload all of `config.json` |
-| `lotus animation on/off` | Hide/show automatic Lotus animation; ON means hidden |
-| `lotus fast on/off` | Enable/disable the fast transition feature |
-| `lotus cancel on/off` | Enable/disable cancellation after buff confirmation; requires fast ON |
-| `lotus log` | Start/stop a diagnostic recording |
+| `lotuscycle` / `lotuscycle status` | Show ownership, cycle, buff, cooldown and transition status |
+| `lotuscycle on` / `lotuscycle off` | Save ON/OFF; ON also starts the cycle |
+| `lotuscycle dg` | Toggle and save dungeon-only mode |
+| `lotuscycle dg on/off` | Enable/disable dungeon-only mode |
+| `lotuscycle dg status` | Show dungeon-only preference and current zone |
+| `lotuscycle reload` | Reload all of `config.json` |
+| `lotuscycle animation on/off` | Hide/show automatic Lotus animation; ON means hidden |
+| `lotuscycle fast on/off` | Enable/disable the fast transition feature |
+| `lotuscycle cancel on/off` | Enable/disable cancellation after buff confirmation; requires fast ON |
+| `lotuscycle log` | Start/stop a diagnostic recording |
 
 
 ## Settings
 
-Edit `config.json`, then use `lotus reload`.
+Edit `config.json`, then use `lotuscycle reload`.
 
 | Setting | Purpose |
 |---|---|
@@ -84,12 +91,12 @@ Animation hiding changes the client presentation; it does not shorten the server
 
 Lancer and Berserker use one native block press/release pair. Other classes use native skill cancellation. Manual block or a newer player action prevents a stale automatic cancel. A stored skill can be retried at most once immediately and once on a matching action end; there is no attack retry loop.
 
-These features do not guarantee instant server acceptance. To compare normal transitions, use `lotus fast off`. To keep skill retries but disable Lotus cancellation, use `lotus cancel off`.
+These features do not guarantee instant server acceptance. To compare normal transitions, use `lotuscycle fast off`. To keep skill retries but disable Lotus cancellation, use `lotuscycle cancel off`.
 
 ## Diagnostics and sharing
 
-Logging starts OFF. Use `lotus log` before and after a test. Recordings are saved as `logs/lotus-cycle-*.jsonl`.
+Logging starts OFF. Use `lotuscycle log` before and after a test. Recordings are saved as `logs/lotus-cycle-*.jsonl`.
 
-Malformed `state.json` or `config.json` does not prevent startup. The original file is preserved as an `*.invalid-*.bak` backup before recovery. State writes are flushed before replacement and keep a validated `state.json.last-good` recovery copy. Invalid state restores that copy when available; otherwise real server buffs/cooldowns rebuild the timers. When the last Lotus is unknown, the cycle prefers the Lotus with the earliest known readiness instead of waiting for an unavailable configured first Lotus. A recovery warning reports an actual damaged local file; it is not a module crash. Invalid configuration restores bundled defaults. Valid user settings are preserved. UTF-8 and UTF-16 JSON files are supported. Invalid `lotus reload` input leaves the running settings and edited file untouched.
+Malformed `state.json` or `config.json` does not prevent startup. The original file is preserved as an `*.invalid-*.bak` backup before recovery. State writes are flushed before replacement and keep a validated `state.json.last-good` recovery copy. Invalid state restores that copy when available; otherwise real server buffs/cooldowns rebuild the timers. When the last Lotus is unknown, the cycle prefers the Lotus with the earliest known readiness instead of waiting for an unavailable configured first Lotus. A recovery warning reports an actual damaged local file; it is not a module crash. Invalid configuration restores bundled defaults. Valid user settings are preserved. UTF-8 and UTF-16 JSON files are supported. Invalid `lotuscycle reload` input leaves the running settings and edited file untouched.
 
 Share the source, `config.json`, `module.json`, `lib/` and this README. Exclude personal `state.json`, `state.json.last-good`, `logs/` and local Toolbox settings; `.gitignore` covers them.

@@ -6,7 +6,18 @@ const Followup = require('./lib/followup');
 const dungeonZones = require('./lib/dungeon-zones.json');
 const defaults = require('./lib/default-config.json');
 const { createStore, validateState } = require('./lib/json-store');
+const commandOwner = require('./lib/command-owner');
 module.exports = function LotusCycle(mod) {
+  let handleCommand = null, cleanupCore = null;
+  const commands = commandOwner(mod.command, (...args) => handleCommand && handleCommand(...args),
+    text => (mod.warn || mod.error).call(mod, `[Lotus Cycle] ${text}`));
+  this.destructor = () => {
+    const cleanup = cleanupCore; cleanupCore = null;
+    try { if (cleanup) cleanup(); } finally { commands.close(); }
+  };
+  // Reserve the unique command before any hooks, timers, config reads or state writes.
+  if (!commands.active) return;
+  try {
   mod.game.initialize(['me.abnormalities', 'contract']);
   const configFile = path.join(__dirname, 'config.json'), stateFile = path.join(__dirname, 'state.json');
   const store = createStore({ fs, warn: text => (mod.warn || mod.error).call(mod, text) });
@@ -32,7 +43,7 @@ module.exports = function LotusCycle(mod) {
   const effectForSkill = id => config.effects.find(effect => effect.skillId === id);
   const isDungeon = () => Number.isInteger(currentZone) && Object.prototype.hasOwnProperty.call(dungeonZones, currentZone);
   const zoneAllowed = () => !config.dungeonOnly || isDungeon();
-  const sessionAvailable = () => mod.game.isIngame && !transitionLoading && !mod.game.isInLoadingScreen &&
+  const sessionAvailable = () => commands.ready() && mod.game.isIngame && !transitionLoading && !mod.game.isInLoadingScreen &&
     zoneAllowed() &&
     pendingRemovals.size === 0 && mod.game.me.alive &&
     !mod.game.me.mounted && !mod.game.contract.active && location !== null && Date.now() >= bootUntil;
@@ -560,8 +571,11 @@ module.exports = function LotusCycle(mod) {
   mod.game.on('enter_loading_screen', loading); mod.game.on('leave_loading_screen', loaded); mod.game.on('leave_game', leave);
   mod.game.me.on('die', pause); mod.game.me.on('resurrect', ready); mod.game.me.on('dismount', ready); mod.game.contract.on('end', ready);
   mod.game.me.on('change_zone', zoneChanged);
-  mod.command.add('lotus', (command = 'status', value = '') => {
+  handleCommand = (command = 'status', value = '') => {
     command = command.toLowerCase();
+    if ((command === 'on' || command === 'reload') && !commands.retry()) {
+      message(commands.reason()); return;
+    }
     if (command === 'on' || command === 'off') {
       config.enabled = command === 'on'; engine.config = config;
       if (!config.enabled) followup.reset('disabled');
@@ -576,7 +590,7 @@ module.exports = function LotusCycle(mod) {
         message(`Dungeon only ${config.dungeonOnly ? 'ON' : 'OFF'} | zone ${currentZone ?? 'unknown'} | ` +
           `${zoneAllowed() ? 'allowed' : 'paused outside dungeon'}`); return;
       }
-      if (value !== '' && value !== 'on' && value !== 'off') { message('lotus dg [on/off/status]'); return; }
+      if (value !== '' && value !== 'on' && value !== 'off') { message('lotuscycle dg [on/off/status]'); return; }
       const nextConfig = { ...config, dungeonOnly: value === '' ? !config.dungeonOnly : value === 'on' };
       try {
         save(configFile, nextConfig); config = nextConfig; engine.config = config;
@@ -588,7 +602,7 @@ module.exports = function LotusCycle(mod) {
       } catch (error) { message(error.message); }
     } else if (command === 'fast') {
       value = value.toLowerCase();
-      if (value !== 'on' && value !== 'off') { message('lotus fast on/off'); return; }
+      if (value !== 'on' && value !== 'off') { message('lotuscycle fast on/off'); return; }
       config.fastTransition.enabled = value === 'on';
       if (!config.fastTransition.enabled) followup.reset('fast-disabled');
       try {
@@ -597,7 +611,7 @@ module.exports = function LotusCycle(mod) {
       } catch (error) { message(error.message); }
     } else if (command === 'cancel') {
       value = value.toLowerCase();
-      if (value !== 'on' && value !== 'off') { message('lotus cancel on/off'); return; }
+      if (value !== 'on' && value !== 'off') { message('lotuscycle cancel on/off'); return; }
       config.fastTransition.cancelAfterBuff = value === 'on';
       followup.reset('cancel-setting-changed');
       try {
@@ -606,7 +620,7 @@ module.exports = function LotusCycle(mod) {
       } catch (error) { message(error.message); }
     } else if (command === 'animation') {
       value = value.toLowerCase();
-      if (value !== 'on' && value !== 'off') { message('lotus animation on/off (on = hide automatic animation)'); return; }
+      if (value !== 'on' && value !== 'off') { message('lotuscycle animation on/off (on = hide automatic animation)'); return; }
       config.hideAutoAnimation = value === 'on'; autoDisplayRequest = null;
       try {
         save(configFile, config); record('ANIMATION_COMMAND', { hidden: config.hideAutoAnimation });
@@ -633,7 +647,8 @@ module.exports = function LotusCycle(mod) {
       } catch (error) { message(error.message); }
     } else if (command === 'status') {
       record('STATUS_QUERY', { state: snapshot() });
-      message(`${config.enabled ? 'ON' : 'OFF'} | cycle ${engine.armed ? 'armed' : 'waiting for a real blessing or lotus on'} | ` +
+      if (!commands.ready()) message(commands.reason());
+      message(`${commands.ready() ? (config.enabled ? 'ON' : 'OFF') : 'PAUSED (command conflict)'} | cycle ${engine.armed ? 'armed' : 'waiting for a real blessing or lotuscycle on'} | ` +
         `automatic animation ${config.hideAutoAnimation ? 'hidden' : 'normal'}`);
       message(`Dungeon only ${config.dungeonOnly ? 'ON' : 'OFF'} | zone ${currentZone ?? 'unknown'} | ` +
         `${zoneAllowed() ? 'allowed' : 'paused outside dungeon'}`);
@@ -644,11 +659,9 @@ module.exports = function LotusCycle(mod) {
       for (const effect of config.effects) message(`${effect.key}: ${ownershipState(effect)} | buff ${Math.max(0, Math.ceil(((engine.buffs.get(effect.buffId) || 0) - Date.now()) / 1000))}s | ` +
         `recharge ${engine.knownCooldowns.has(effect.cooldownId) ? Math.max(0, Math.ceil((engine.readyAt(effect) - Date.now()) / 1000)) + 's' : 'unknown'} | ` +
         `attempts ${engine.attempts.get(effect.key) || 0} | route ${premiumSlots.has(effect.key) ? 'premium slot' : 'direct skill'}`);
-    } else message('lotus on/off/status/reload/log | lotus dg [on/off/status] | lotus animation on/off | lotus fast on/off | lotus cancel on/off');
-  });
-  if (mod.game.isIngame && mod.game.me.gameId && mod.game.me.playerId != null)
-    login({ serverId: mod.game.me.serverId ?? mod.serverId, playerId: mod.game.me.playerId });
-  this.destructor = () => {
+    } else message('lotuscycle on/off/status/reload/log | lotuscycle dg [on/off/status] | lotuscycle animation on/off | lotuscycle fast on/off | lotuscycle cancel on/off');
+  };
+  cleanupCore = () => {
     clearRemovalTimer(); pendingRemovals.clear();
     persist(); engine.reset(true); clearActivity(); if (bootTimer !== null) mod.clearTimeout(bootTimer);
     autoDisplayRequest = null; hiddenLotusActions.clear();
@@ -658,6 +671,9 @@ module.exports = function LotusCycle(mod) {
     mod.game.me.removeListener('die', pause); mod.game.me.removeListener('resurrect', ready);
     mod.game.me.removeListener('dismount', ready); mod.game.contract.removeListener('end', ready);
     mod.game.me.removeListener('change_zone', zoneChanged);
-    mod.command.remove('lotus'); record('MODULE_UNLOAD'); logFile = null;
+    record('MODULE_UNLOAD'); logFile = null;
   };
+  if (mod.game.isIngame && mod.game.me.gameId && mod.game.me.playerId != null)
+    login({ serverId: mod.game.me.serverId ?? mod.serverId, playerId: mod.game.me.playerId });
+  } catch (error) { this.destructor(); throw error; }
 };
